@@ -1,6 +1,7 @@
 import { message } from 'ant-design-vue'
 import router from '@/router'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { REGISTER_ENABLED } from '@/config/env'
 
 // 是否已首次获取过登录用户信息（避免每次路由切换都请求后端）
 let firstFetchLoginUser = true
@@ -20,6 +21,11 @@ router.beforeEach(async (to, from, next) => {
   }
 
   const toUrl = to.fullPath
+  // 关闭注册时，注册页直接跳到登录页
+  if (!REGISTER_ENABLED && to.name === 'userRegister') {
+    next('/user/login')
+    return
+  }
   // 管理员页面权限校验（以 /admin 开头或 meta.access 为 admin 的路由）
   if (toUrl.startsWith('/admin') || to.meta.access === 'admin') {
     if (!loginUser || loginUser.userRole !== 'admin') {

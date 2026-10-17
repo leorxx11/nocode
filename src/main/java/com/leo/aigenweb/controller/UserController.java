@@ -15,6 +15,7 @@ import com.leo.aigenweb.model.vo.UserVO;
 import com.mybatisflex.core.paginate.Page;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -37,12 +38,19 @@ public class UserController {
     private UserService userService;
 
     /**
+     * 是否开放注册，线上关闭后只能由管理员添加用户
+     */
+    @Value("${user.register.enabled:true}")
+    private boolean registerEnabled;
+
+    /**
      * 用户注册
      * @param userRegisterRequest 注册请求
      * @return 新用户 id
      */
     @PostMapping("/register")
     public BaseResponse<Long> register(@RequestBody UserRegisterRequest userRegisterRequest) {
+        ThrowUtils.throwIf(!registerEnabled, ErrorCode.FORBIDDEN_ERROR, "注册已关闭");
         ThrowUtils.throwIf(userRegisterRequest == null, ErrorCode.PARAMS_ERROR);
         String userAccount = userRegisterRequest.getUserAccount();
         String userPassword = userRegisterRequest.getUserPassword();

@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_STATIC_PREVIEW_DOMAIN?: string
   /** 应用部署域名 */
   readonly VITE_DEPLOY_DOMAIN?: string
+  /** 是否开放注册，设为 'false' 时隐藏注册入口 */
+  readonly VITE_REGISTER_ENABLED?: string
 }
 
 interface ImportMeta {

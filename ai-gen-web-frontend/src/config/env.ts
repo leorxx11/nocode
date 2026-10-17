@@ -14,6 +14,9 @@ export const STATIC_PREVIEW_DOMAIN =
 // 应用部署域名
 export const DEPLOY_DOMAIN = import.meta.env.VITE_DEPLOY_DOMAIN || 'http://localhost:8080'
 
+// 是否开放注册（线上构建时设 VITE_REGISTER_ENABLED=false 隐藏注册入口，后端由 user.register.enabled 控制）
+export const REGISTER_ENABLED = import.meta.env.VITE_REGISTER_ENABLED !== 'false'
+
 // 获取生成应用的静态资源预览地址，VUE 工程需要访问构建后的 dist 目录
 export const getStaticPreviewUrl = (codeGenType: string, appId: string | number) => {
   const outputDir = `${codeGenType}_${appId}`

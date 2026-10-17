@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { userLogin } from '@/api/userController'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { REGISTER_ENABLED } from '@/config/env'
 
 const route = useRoute()
 const router = useRouter()
@@ -73,7 +74,7 @@ const handleSubmit = async (values: API.UserLoginRequest) => {
             autocomplete="current-password"
           />
         </a-form-item>
-        <div class="tips">
+        <div v-if="REGISTER_ENABLED" class="tips">
           没有账号？
           <RouterLink to="/user/register">去注册</RouterLink>
         </div>
