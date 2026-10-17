@@ -76,6 +76,15 @@ public class AiCodeGeneratorServiceFactory {
         return serviceCache.get(cacheKey, key -> createAiCodeGeneratorService(appId, codeGenTypeEnum));
     }
 
+    /**
+     * 移除应用的 AI 服务缓存，下次对话时重新创建，并从数据库对话历史重新加载对话记忆
+     */
+    public void invalidateAiCodeGeneratorService(long appId) {
+        for (CodeGenTypeEnum codeGenTypeEnum : CodeGenTypeEnum.values()) {
+            serviceCache.invalidate(buildCacheKey(appId, codeGenTypeEnum));
+        }
+    }
+
     private String buildCacheKey(long appId, CodeGenTypeEnum codeGenTypeEnum){
         return appId + "_" + codeGenTypeEnum;
     }

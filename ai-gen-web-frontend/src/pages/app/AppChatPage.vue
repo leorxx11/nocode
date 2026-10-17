@@ -21,10 +21,22 @@ import {
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import { deleteApp, deleteAppByAdmin, deployApp, getAppVoById, getGenStatus } from '@/api/appController'
+import {
+  deleteApp,
+  deleteAppByAdmin,
+  deployApp,
+  getAppVoById,
+  getGenStatus,
+  stopGenCode,
+} from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
-import { VUE_PROJECT_CODE_GEN_TYPE, formatCodeGenType } from '@/constants/app'
+import {
+  GEN_STOPPED_MARK,
+  VUE_PROJECT_CODE_GEN_TYPE,
+  formatCodeGenType,
+  withStoppedMark,
+} from '@/constants/app'
 import { useLoginUserStore } from '@/stores/loginUser'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
@@ -93,6 +105,9 @@ const handleInputKeydown = (event: KeyboardEvent) => {
 }
 const messageListRef = ref<HTMLDivElement>()
 let eventSource: EventSource | null = null
+// 结束当前流的展示并标记为已停止，由 streamGeneration 设置
+let finishAsStopped: (() => void) | null = null
+const stopping = ref(false)
 // 流式内容批量刷新的定时器
 let flushTimer: number | null = null
 
@@ -277,6 +292,7 @@ const scrollToBottom = () => {
 const closeEventSource = () => {
   eventSource?.close()
   eventSource = null
+  finishAsStopped = null
   if (flushTimer !== null) {
     window.clearInterval(flushTimer)
     flushTimer = null
@@ -387,6 +403,13 @@ const streamGeneration = (
     isStreaming.value = false
   }
 
+  // 停止生成：后端已保存带停止提示的对话历史，这里直接结束展示，不再等待剩余的推送
+  finishAsStopped = () => {
+    finishStream()
+    aiMessage.content = withStoppedMark(aiMessage.content)
+    message.info('已停止生成')
+  }
+
   eventSource = new EventSource(url, { withCredentials: true })
   eventSource.onmessage = (event) => {
     if (!event.data) {
@@ -405,6 +428,12 @@ const streamGeneration = (
     finishStream()
     if (onEmptyDone && !aiMessage.content) {
       onEmptyDone()
+      return
+    }
+    // 在其他页面被停止：没有新的代码，不刷新预览
+    if (aiMessage.content.endsWith(GEN_STOPPED_MARK)) {
+      aiMessage.content = withStoppedMark(aiMessage.content)
+      message.info('已停止生成')
       return
     }
     if (appInfo.value?.codeGenType === VUE_PROJECT_CODE_GEN_TYPE) {
@@ -434,6 +463,29 @@ const streamGeneration = (
       aiMessage.content = '抱歉，本次生成失败，请稍后重试'
       message.error('对话失败，请稍后重试')
     }
+  }
+}
+
+// 停止正在进行的生成
+const stopGeneration = async () => {
+  if (!isStreaming.value || stopping.value) {
+    return
+  }
+  stopping.value = true
+  try {
+    const res = await stopGenCode({ appId: appId as unknown as number })
+    if (res.data.code !== 0) {
+      message.error('停止失败：' + res.data.message)
+      return
+    }
+    // 返回 false 表示生成刚好已经结束，剩余内容和 done 事件会照常推送过来
+    if (res.data.data) {
+      finishAsStopped?.()
+    }
+  } catch {
+    message.error('停止失败，请稍后重试')
+  } finally {
+    stopping.value = false
   }
 }
 
@@ -788,7 +840,21 @@ const doDelete = () => {
                 <template #icon><AimOutlined /></template>
               </a-button>
             </a-tooltip>
+            <a-tooltip v-if="isOwner && isStreaming" title="停止生成">
+              <a-button
+                type="primary"
+                shape="circle"
+                class="send-btn"
+                danger
+                aria-label="停止生成"
+                :loading="stopping"
+                @click="stopGeneration"
+              >
+                <template #icon><span class="stop-icon" /></template>
+              </a-button>
+            </a-tooltip>
             <a-button
+              v-else
               type="primary"
               shape="circle"
               class="send-btn"
@@ -1082,6 +1148,14 @@ const doDelete = () => {
   position: absolute;
   right: 10px;
   bottom: 10px;
+}
+.stop-icon {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+  vertical-align: middle;
 }
 .edit-btn {
   position: absolute;

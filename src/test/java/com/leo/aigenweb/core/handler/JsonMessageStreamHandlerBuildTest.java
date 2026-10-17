@@ -5,9 +5,11 @@ import com.leo.aigenweb.ai.model.message.AiResponseMessage;
 import com.leo.aigenweb.core.builder.VueProjectBuilder;
 import com.leo.aigenweb.model.entity.User;
 import com.leo.aigenweb.service.ChatHistoryService;
+import com.leo.aigenweb.constant.AppConstant;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -74,5 +76,18 @@ class JsonMessageStreamHandlerBuildTest {
         assertThrows(IllegalStateException.class,
                 () -> handler.handle(failing, chatHistoryService, 42L, user()).collectList().block());
         assertEquals(0, calls.get(), "生成失败时不应该构建");
+    }
+
+    @Test
+    void stopSavesPartialResponseWithoutBuilding() {
+        Sinks.Many<String> upstream = Sinks.many().unicast().onBackpressureBuffer();
+        handler.handle(upstream.asFlux(), chatHistoryService, 42L, user())
+                .take(1)
+                .subscribe();
+        upstream.tryEmitNext(JSONUtil.toJsonStr(new AiResponseMessage("half")));
+        // take(1) 收到第一块后取消上游，相当于停止生成
+        verify(chatHistoryService).addChatMessage(eq(42L), eq("half" + AppConstant.GEN_STOPPED_MARK), anyString(), eq(7L));
+        verify(chatHistoryService, times(1)).addChatMessage(anyLong(), anyString(), anyString(), anyLong());
+        verify(builder, never()).buildProject(anyString());
     }
 }

@@ -18,6 +18,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * JSON 消息流处理器
@@ -47,7 +48,10 @@ public class JsonMessageStreamHandler {
                                ChatHistoryService chatHistoryService,
                                long appId, User loginUser) {
         // 收集数据用于生成后端记忆格式
-        StringBuilder chatHistoryStringBuilder = new StringBuilder();
+        // 停止生成时在另一个线程读取，所以用线程安全的 StringBuffer
+        StringBuffer chatHistoryStringBuilder = new StringBuffer();
+        // 完成、出错、停止三者只保存一次对话历史
+        AtomicBoolean saved = new AtomicBoolean(false);
         // 用于跟踪已经见过的工具ID，判断是否是第一次调用
         Set<String> seenToolIds = new HashSet<>();
         return originFlux
@@ -57,6 +61,9 @@ public class JsonMessageStreamHandler {
                 })
                 .filter(StrUtil::isNotEmpty) // 过滤空字串
                 .doOnComplete(() -> {
+                    if (!saved.compareAndSet(false, true)) {
+                        return;
+                    }
                     // 流式响应完成后，添加 AI 消息到对话历史
                     String aiResponse = chatHistoryStringBuilder.toString();
                     chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
@@ -70,16 +77,27 @@ public class JsonMessageStreamHandler {
                     }
                 })
                 .doOnError(error -> {
+                    if (!saved.compareAndSet(false, true)) {
+                        return;
+                    }
                     // 如果AI回复失败，也要记录错误消息
                     String errorMessage = "AI回复失败: " + error.getMessage();
                     chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+                })
+                .doOnCancel(() -> {
+                    if (!saved.compareAndSet(false, true)) {
+                        return;
+                    }
+                    // 用户停止生成：保存已生成的部分。已经写入的文件保留，但不构建项目，预览仍是上次构建的结果
+                    String aiResponse = GenStoppedMessage.of(chatHistoryStringBuilder.toString());
+                    chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                 });
     }
 
     /**
      * 解析并收集 TokenStream 数据
      */
-    private String handleJsonMessageChunk(String chunk, StringBuilder chatHistoryStringBuilder, Set<String> seenToolIds) {
+    private String handleJsonMessageChunk(String chunk, StringBuffer chatHistoryStringBuilder, Set<String> seenToolIds) {
         // 解析 JSON
         StreamMessage streamMessage = JSONUtil.toBean(chunk, StreamMessage.class);
         StreamMessageTypeEnum typeEnum = StreamMessageTypeEnum.getEnumByValue(streamMessage.getType());

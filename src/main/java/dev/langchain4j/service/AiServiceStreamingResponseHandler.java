@@ -57,6 +57,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
     private final Map<String, ToolExecutor> toolExecutors;
     private final List<String> responseBuffer = new ArrayList<>();
     private final boolean hasOutputGuardrails;
+    private final TokenStreamCancellation cancellation;
 
     AiServiceStreamingResponseHandler(
             ChatExecutor chatExecutor,
@@ -73,7 +74,8 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
             List<ToolSpecification> toolSpecifications,
             Map<String, ToolExecutor> toolExecutors,
             GuardrailRequestParams commonGuardrailParams,
-            Object methodKey) {
+            Object methodKey,
+            TokenStreamCancellation cancellation) {
         this.chatExecutor = ensureNotNull(chatExecutor, "chatExecutor");
         this.context = ensureNotNull(context, "context");
         this.memoryId = ensureNotNull(memoryId, "memoryId");
@@ -93,10 +95,20 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
         this.toolSpecifications = copy(toolSpecifications);
         this.toolExecutors = copy(toolExecutors);
         this.hasOutputGuardrails = context.guardrailService().hasOutputGuardrails(methodKey);
+        this.cancellation = ensureNotNull(cancellation, "cancellation");
+    }
+
+    @Override
+    public void onChunkReceived() {
+        // 记录读取线程，已取消时中断读取
+        cancellation.onStreaming();
     }
 
     @Override
     public void onPartialResponse(String partialResponse) {
+        if (cancellation.onStreaming()) {
+            return;
+        }
         // If we're using output guardrails, then buffer the partial response until the guardrails have completed
         if (hasOutputGuardrails) {
             responseBuffer.add(partialResponse);
@@ -107,12 +119,19 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
 
     @Override
     public void onPartialToolExecutionRequest(int index, ToolExecutionRequest partialToolExecutionRequest) {
+        if (cancellation.onStreaming()) {
+            return;
+        }
         // If we're using output guardrails, then buffer the partial response until the guardrails have completed
         partialToolExecutionRequestHandler.accept(index, partialToolExecutionRequest);
     }
 
     @Override
     public void onCompleteResponse(ChatResponse completeResponse) {
+        // 已取消：回复不写入记忆，也不执行工具、不发起下一轮请求
+        if (cancellation.onResponseEnd()) {
+            return;
+        }
         AiMessage aiMessage = completeResponse.aiMessage();
         addToMemory(aiMessage);
 
@@ -132,6 +151,11 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
                             .build();
                     toolExecutionHandler.accept(toolExecution);
                 }
+            }
+
+            // 这批工具执行期间被取消：工具调用和结果已成对写入记忆，到此为止
+            if (cancellation.isCancelled()) {
+                return;
             }
 
             ChatRequest chatRequest = ChatRequest.builder()
@@ -154,7 +178,8 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
                     toolSpecifications,
                     toolExecutors,
                     commonGuardrailParams,
-                    methodKey);
+                    methodKey,
+                    cancellation);
 
             context.streamingChatModel.chat(chatRequest, handler);
         } else {
@@ -217,6 +242,11 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
 
     @Override
     public void onError(Throwable error) {
+        // 已取消：错误是中断读取线程引起的，属于预期结果
+        if (cancellation.onResponseEnd()) {
+            LOG.info("流式请求已取消: {}", error.toString());
+            return;
+        }
         if (errorHandler != null) {
             try {
                 errorHandler.accept(error);

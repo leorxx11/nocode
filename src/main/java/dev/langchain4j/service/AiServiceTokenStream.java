@@ -51,6 +51,8 @@ public class AiServiceTokenStream implements TokenStream {
     private int onErrorInvoked;
     private int ignoreErrorsInvoked;
 
+    private final TokenStreamCancellation cancellation = new TokenStreamCancellation();
+
     /**
      * Creates a new instance of {@link AiServiceTokenStream} with the given parameters.
      *
@@ -124,8 +126,16 @@ public class AiServiceTokenStream implements TokenStream {
     }
 
     @Override
+    public void cancel() {
+        cancellation.cancel();
+    }
+
+    @Override
     public void start() {
         validateConfiguration();
+        if (cancellation.isCancelled()) {
+            return;
+        }
 
         ChatRequest chatRequest = ChatRequest.builder()
                 .messages(messages)
@@ -152,7 +162,8 @@ public class AiServiceTokenStream implements TokenStream {
                 toolSpecifications,
                 toolExecutors,
                 commonGuardrailParams,
-                methodKey);
+                methodKey,
+                cancellation);
 
         if (contentsHandler != null && retrievedContents != null) {
             contentsHandler.accept(retrievedContents);

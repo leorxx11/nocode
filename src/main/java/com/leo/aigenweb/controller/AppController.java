@@ -148,6 +148,20 @@ public class AppController {
     }
 
     /**
+     * 停止正在进行的代码生成，已生成的部分会保存到对话历史
+     *
+     * @param appGenStopRequest 停止生成请求
+     * @param request           HttpServletRequest
+     * @return 是否停止了正在进行的生成（已经结束时返回 false）
+     */
+    @PostMapping("/chat/gen/stop")
+    public BaseResponse<Boolean> stopGenCode(@RequestBody AppGenStopRequest appGenStopRequest, HttpServletRequest request) {
+        ThrowUtils.throwIf(appGenStopRequest == null, ErrorCode.PARAMS_ERROR);
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(appService.stopGenCode(appGenStopRequest.getAppId(), loginUser));
+    }
+
+    /**
      * 把内容流转换为 SSE 事件，结束时追加 done 事件
      */
     private Flux<ServerSentEvent<String>> toServerSentEvents(Flux<String> contentFlux) {

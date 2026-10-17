@@ -44,6 +44,8 @@ public class StreamingChatModelConfig {
                 .temperature(temperature)
                 .logRequests(logRequests)
                 .logResponses(logResponses)
+                // 停止生成时需要能中断流式请求
+                .httpClientBuilder(StreamingHttpClientBuilders.cancellable())
                 .build();
     }
 }

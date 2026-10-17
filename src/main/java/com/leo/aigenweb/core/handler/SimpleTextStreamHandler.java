@@ -6,6 +6,8 @@ import com.leo.aigenweb.service.ChatHistoryService;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * 简单文本流处理器
  * 处理 HTML 和 MULTI_FILE 类型的流式响应
@@ -26,7 +28,10 @@ public class SimpleTextStreamHandler {
     public Flux<String> handle(Flux<String> originFlux,
                                ChatHistoryService chatHistoryService,
                                long appId, User loginUser) {
-        StringBuilder aiResponseBuilder = new StringBuilder();
+        // 停止生成时在另一个线程读取，所以用线程安全的 StringBuffer
+        StringBuffer aiResponseBuilder = new StringBuffer();
+        // 完成、出错、停止三者只保存一次对话历史
+        AtomicBoolean saved = new AtomicBoolean(false);
         return originFlux
                 .map(chunk -> {
                     // 收集AI响应内容
@@ -34,14 +39,28 @@ public class SimpleTextStreamHandler {
                     return chunk;
                 })
                 .doOnComplete(() -> {
+                    if (!saved.compareAndSet(false, true)) {
+                        return;
+                    }
                     // 流式响应完成后，添加AI消息到对话历史
                     String aiResponse = aiResponseBuilder.toString();
                     chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                 })
                 .doOnError(error -> {
+                    if (!saved.compareAndSet(false, true)) {
+                        return;
+                    }
                     // 如果AI回复失败，也要记录错误消息
                     String errorMessage = "AI回复失败: " + error.getMessage();
                     chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+                })
+                .doOnCancel(() -> {
+                    if (!saved.compareAndSet(false, true)) {
+                        return;
+                    }
+                    // 用户停止生成：保存已生成的部分，代码不完整所以不解析保存为文件
+                    String aiResponse = GenStoppedMessage.of(aiResponseBuilder.toString());
+                    chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                 });
     }
 }

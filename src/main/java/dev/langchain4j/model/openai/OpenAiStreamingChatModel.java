@@ -124,6 +124,7 @@ public class OpenAiStreamingChatModel implements StreamingChatModel {
 
         client.chatCompletion(openAiRequest)
                 .onPartialResponse(partialResponse -> {
+                    handler.onChunkReceived();
                     openAiResponseBuilder.append(partialResponse);
                     handle(partialResponse, toolBuilder, handler);
                 })

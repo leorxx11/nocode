@@ -71,6 +71,15 @@ public interface AppService extends IService<App> {
     Flux<String> resumeGenCode(Long appId, User loginUser);
 
     /**
+     * 停止正在进行的生成：中断模型请求，已生成的部分加上“已停止生成”保存到对话历史
+     *
+     * @param appId 应用 ID
+     * @param loginUser 当前登录用户
+     * @return 是否停止了正在进行的生成（已经结束时返回 false）
+     */
+    boolean stopGenCode(Long appId, User loginUser);
+
+    /**
      * 部署应用
      *
      * @param appId 应用 ID

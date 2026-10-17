@@ -6,6 +6,7 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.leo.aigenweb.ai.AiCodeGenTypeRoutingService;
+import com.leo.aigenweb.ai.AiCodeGeneratorServiceFactory;
 import com.leo.aigenweb.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.leo.aigenweb.constant.AppConstant;
 import com.leo.aigenweb.core.AiCodeGeneratorFacade;
@@ -116,6 +117,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private VueProjectBuilder vueProjectBuilder;
     @Resource
     private GenerationTaskManager generationTaskManager;
+    @Resource
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
@@ -164,6 +167,17 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Flux<String> running = generationTaskManager.getRunning(appId);
         // 没有正在生成的任务时直接结束，前端以已保存的对话历史为准
         return running == null ? Flux.empty() : running;
+    }
+
+    @Override
+    public boolean stopGenCode(Long appId, User loginUser) {
+        checkAppOwner(appId, loginUser);
+        boolean stopped = generationTaskManager.stop(appId);
+        if (stopped) {
+            // 被停止的回复没有写入 AI 对话记忆，移除缓存的 AI 服务，下次对话时从对话历史重新加载记忆
+            aiCodeGeneratorServiceFactory.invalidateAiCodeGeneratorService(appId);
+        }
+        return stopped;
     }
 
     /**

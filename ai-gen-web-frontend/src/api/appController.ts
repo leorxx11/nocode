@@ -86,6 +86,18 @@ export async function chatToGenCode(
   })
 }
 
+/** 停止正在进行的代码生成 POST /app/chat/gen/stop */
+export async function stopGenCode(body: API.AppGenStopRequest, options?: { [key: string]: any }) {
+  return request<API.BaseResponseBoolean>('/app/chat/gen/stop', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  })
+}
+
 /** 查询应用是否正在生成代码 GET /app/chat/gen/status */
 export async function getGenStatus(
   params: { appId: number },
