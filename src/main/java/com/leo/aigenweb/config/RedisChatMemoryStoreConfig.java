@@ -1,5 +1,6 @@
 package com.leo.aigenweb.config;
 
+import cn.hutool.core.util.StrUtil;
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -18,11 +19,15 @@ public class RedisChatMemoryStoreConfig {
 
     @Bean
     public RedisChatMemoryStore redisChatMemoryStore() {
-        return RedisChatMemoryStore.builder()
+        RedisChatMemoryStore.Builder builder = RedisChatMemoryStore.builder()
                 .host(host)
                 .port(port)
                 .password(password)
-                .ttl(ttl)
-                .build();
+                .ttl(ttl);
+        // 只设置了密码、没有设置用户名时，需要显式指定 Redis 默认用户
+        if (StrUtil.isNotBlank(password)) {
+            builder.user("default");
+        }
+        return builder.build();
     }
 }
