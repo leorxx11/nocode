@@ -51,6 +51,11 @@ public interface StreamingChatModel {
             }
 
             @Override
+            public void onChunkReceived() {
+                handler.onChunkReceived();
+            }
+
+            @Override
             public void onPartialToolExecutionRequest(int index, ToolExecutionRequest partialToolExecutionRequest) {
                 handler.onPartialToolExecutionRequest(index, partialToolExecutionRequest);
             }

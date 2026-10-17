@@ -25,4 +25,9 @@ public interface AppConstant {
      */
     String CODE_DEPLOY_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_deploy";
 
+    /**
+     * 停止生成时追加在 AI 回复末尾的提示（推送给前端，也写入对话历史）
+     */
+    String GEN_STOPPED_MARK = "\n\n（已停止生成）";
+
 }

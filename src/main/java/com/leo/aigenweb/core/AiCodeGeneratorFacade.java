@@ -49,12 +49,12 @@ public class AiCodeGeneratorFacade {
 
         return switch (codeGenTypeEnum) {
             case HTML -> {
-                Flux<String> codeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
-                yield processCodeStream(codeStream, CodeGenTypeEnum.HTML, appId);
+                TokenStream tokenStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
+                yield processCodeStream(processTextTokenStream(tokenStream), CodeGenTypeEnum.HTML, appId);
             }
             case MULTI_FILE -> {
-                 Flux<String> codeStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
-                yield processCodeStream(codeStream, CodeGenTypeEnum.MULTI_FILE, appId);
+                TokenStream tokenStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
+                yield processCodeStream(processTextTokenStream(tokenStream), CodeGenTypeEnum.MULTI_FILE, appId);
             }
             case VUE_PROJECT -> {
                 TokenStream tokenStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
@@ -68,13 +68,32 @@ public class AiCodeGeneratorFacade {
     }
 
     /**
+     * 将 TokenStream 转换为纯文本的 Flux<String>（HTML、MULTI_FILE）
+     *
+     * @param tokenStream TokenStream 对象
+     * @return Flux<String> 流式响应，取消订阅会中断模型请求
+     */
+    private Flux<String> processTextTokenStream(TokenStream tokenStream) {
+        return Flux.create(sink -> {
+            // 停止生成时下游取消订阅，同时中断模型请求
+            sink.onCancel(tokenStream::cancel);
+            tokenStream.onPartialResponse(sink::next)
+                    .onCompleteResponse(response -> sink.complete())
+                    .onError(sink::error)
+                    .start();
+        });
+    }
+
+    /**
      * 将 TokenStream 转换为 Flux<String>，并传递工具调用信息
      *
      * @param tokenStream TokenStream 对象
-     * @return Flux<String> 流式响应
+     * @return Flux<String> 流式响应，取消订阅会中断模型请求
      */
     private Flux<String> processTokenStream(TokenStream tokenStream) {
         return Flux.create(sink -> {
+            // 停止生成时下游取消订阅，同时中断模型请求
+            sink.onCancel(tokenStream::cancel);
             tokenStream.onPartialResponse((String partialResponse) -> {
                         AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
                         sink.next(JSONUtil.toJsonStr(aiResponseMessage));

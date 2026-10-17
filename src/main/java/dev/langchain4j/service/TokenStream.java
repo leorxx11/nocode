@@ -80,4 +80,10 @@ public interface TokenStream {
      * Will send a request to LLM and start response streaming.
      */
     void start();
+
+    /**
+     * 本项目扩展：取消生成，中断正在进行的模型流式请求，正在执行的这批工具执行完后不再发起下一轮请求。
+     * 取消后不再回调 onPartialResponse、onCompleteResponse 和 onError，模型回复也不再写入对话记忆。
+     */
+    void cancel();
 }

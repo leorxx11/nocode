@@ -14,6 +14,10 @@ declare namespace API {
     appId?: number
   }
 
+  type AppGenStopRequest = {
+    appId?: number
+  }
+
   type AppQueryRequest = {
     pageNum?: number
     pageSize?: number

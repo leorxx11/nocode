@@ -21,6 +21,13 @@ public interface StreamingChatResponseHandler {
     void onPartialResponse(String partialResponse);
 
     /**
+     * 本项目扩展：每收到一个流式分块时调用，早于该分块的其他回调。
+     * 没有正文的分块（比如推理模型的思考内容）也会调用，用于在模型还没输出正文时也能及时取消请求。
+     */
+    default void onChunkReceived() {
+    }
+
+    /**
      * TODO
      * TODO this callback is called as soon as partial tool is available
      * TODO can be called multiple times
