@@ -118,7 +118,39 @@ public class AppController {
         User loginUser = userService.getLoginUser(request);
         // SSE 流式返回
         Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
-        // 转换为ServerSentEvent事件
+        return toServerSentEvents(contentFlux);
+    }
+
+    /**
+     * 查询应用是否正在生成代码（离开页面后生成仍在后台进行，重新进入时据此决定是否接上）
+     *
+     * @param appId   应用 ID
+     * @param request HttpServletRequest
+     * @return 是否正在生成
+     */
+    @GetMapping("/chat/gen/status")
+    public BaseResponse<Boolean> getGenStatus(@RequestParam Long appId, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(appService.isGenerating(appId, loginUser));
+    }
+
+    /**
+     * 重新接上正在进行的代码生成：先回放已生成的内容，再继续推送后续内容
+     *
+     * @param appId   应用 ID
+     * @param request HttpServletRequest
+     * @return 生成的代码流
+     */
+    @GetMapping(value = "/chat/gen/resume", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> resumeGenCode(@RequestParam Long appId, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        return toServerSentEvents(appService.resumeGenCode(appId, loginUser));
+    }
+
+    /**
+     * 把内容流转换为 SSE 事件，结束时追加 done 事件
+     */
+    private Flux<ServerSentEvent<String>> toServerSentEvents(Flux<String> contentFlux) {
         return contentFlux
                 .map(chunk -> {
                     // 包装为 JSON（防止空格丢失）

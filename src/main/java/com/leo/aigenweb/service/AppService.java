@@ -53,6 +53,24 @@ public interface AppService extends IService<App> {
     Flux<String> chatToGenCode(Long appId, String message, User loginUser);
 
     /**
+     * 应用是否正在生成代码（仅应用创建者可查询）
+     *
+     * @param appId 应用 ID
+     * @param loginUser 当前登录用户
+     * @return 是否正在生成
+     */
+    boolean isGenerating(Long appId, User loginUser);
+
+    /**
+     * 重新接上正在进行的生成：先回放已生成的内容，再继续接收后续内容；没有正在生成的任务时直接结束
+     *
+     * @param appId 应用 ID
+     * @param loginUser 当前登录用户
+     * @return 生成的代码流
+     */
+    Flux<String> resumeGenCode(Long appId, User loginUser);
+
+    /**
      * 部署应用
      *
      * @param appId 应用 ID

@@ -9,6 +9,7 @@ import com.leo.aigenweb.ai.AiCodeGenTypeRoutingService;
 import com.leo.aigenweb.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.leo.aigenweb.constant.AppConstant;
 import com.leo.aigenweb.core.AiCodeGeneratorFacade;
+import com.leo.aigenweb.core.GenerationTaskManager;
 import com.leo.aigenweb.core.builder.VueProjectBuilder;
 import com.leo.aigenweb.core.handler.StreamHandlerExecutor;
 import com.leo.aigenweb.exception.BusinessException;
@@ -113,6 +114,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private StreamHandlerExecutor streamHandlerExecutor;
     @Resource
     private VueProjectBuilder vueProjectBuilder;
+    @Resource
+    private GenerationTaskManager generationTaskManager;
 
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
@@ -135,13 +138,42 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型");
         }
 
+        // 同一个应用同一时间只能有一个生成任务
+        ThrowUtils.throwIf(generationTaskManager.isRunning(appId), ErrorCode.OPERATION_ERROR, "该应用正在生成中，请等待完成后再发送");
+
         // 通过校验后，先保存用户消息到对话历史
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
 
         // 调用 AI 生成代码
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
         // 收集 AI 响应内容，在流式返回完成后保存到对话历史
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        Flux<String> handledStream = streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        // 在后台运行，浏览器断开连接（比如离开页面）不会中断生成
+        return generationTaskManager.start(appId, handledStream);
+    }
+
+    @Override
+    public boolean isGenerating(Long appId, User loginUser) {
+        checkAppOwner(appId, loginUser);
+        return generationTaskManager.isRunning(appId);
+    }
+
+    @Override
+    public Flux<String> resumeGenCode(Long appId, User loginUser) {
+        checkAppOwner(appId, loginUser);
+        Flux<String> running = generationTaskManager.getRunning(appId);
+        // 没有正在生成的任务时直接结束，前端以已保存的对话历史为准
+        return running == null ? Flux.empty() : running;
+    }
+
+    /**
+     * 校验应用存在且属于当前用户
+     */
+    private void checkAppOwner(Long appId, User loginUser) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        ThrowUtils.throwIf(!app.getUserId().equals(loginUser.getId()), ErrorCode.NO_AUTH_ERROR, "无权限访问该应用");
     }
 
     /**

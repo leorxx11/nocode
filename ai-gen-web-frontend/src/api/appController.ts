@@ -86,6 +86,20 @@ export async function chatToGenCode(
   })
 }
 
+/** 查询应用是否正在生成代码 GET /app/chat/gen/status */
+export async function getGenStatus(
+  params: { appId: number },
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseBoolean>('/app/chat/gen/status', {
+    method: 'GET',
+    params: {
+      ...params,
+    },
+    ...(options || {}),
+  })
+}
+
 /** 此处后端没有提供注释 POST /app/delete */
 export async function deleteApp(body: API.DeleteRequest, options?: { [key: string]: any }) {
   return request<API.BaseResponseBoolean>('/app/delete', {

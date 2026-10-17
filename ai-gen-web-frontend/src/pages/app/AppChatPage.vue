@@ -21,7 +21,7 @@ import {
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import { deleteApp, deleteAppByAdmin, deployApp, getAppVoById } from '@/api/appController'
+import { deleteApp, deleteAppByAdmin, deployApp, getAppVoById, getGenStatus } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
 import { VUE_PROJECT_CODE_GEN_TYPE, formatCodeGenType } from '@/constants/app'
@@ -251,6 +251,12 @@ onMounted(async () => {
     if (messages.value.length >= 2) {
       showExistingPreview()
     }
+    // 上次发送后离开了页面：生成仍在后台进行时接上，否则最后一条是用户消息说明那次生成没有完成
+    if (isOwner.value && !(await resumeGeneration())) {
+      if (messages.value.at(-1)?.role === 'user') {
+        generationError.value = '上次生成未完成，可以重新发送'
+      }
+    }
   } else {
     // 非本人应用看不到历史，直接尝试展示已生成的网站
     showExistingPreview()
@@ -277,12 +283,24 @@ const closeEventSource = () => {
   }
 }
 
-// 离开页面时断开 SSE 连接
+// 离开页面时断开 SSE 连接：只是不再观看，生成任务在后端继续，重新进入时可以接上
 onBeforeUnmount(() => {
   window.removeEventListener('message', handleIframeMessage)
   closeEventSource()
   isBuilding.value = false
 })
+
+// 占位的 AI 消息，收到流式内容后逐段追加
+const pushAiPlaceholder = () => {
+  const aiMessage = reactive<ChatMessage>({
+    role: 'ai',
+    content: '',
+    loading: true,
+    streaming: true,
+  })
+  messages.value.push(aiMessage)
+  return aiMessage
+}
 
 // 通过 SSE 与 AI 对话生成代码，流式展示回复
 const sendMessage = (content: string) => {
@@ -292,16 +310,52 @@ const sendMessage = (content: string) => {
   generationError.value = ''
   const generationStartedAt = Math.floor(Date.now() / 1000) * 1000
   messages.value.push({ role: 'user', content })
-  // 占位的 AI 消息，收到流式内容后逐段追加
-  const aiMessage = reactive<ChatMessage>({
-    role: 'ai',
-    content: '',
-    loading: true,
-    streaming: true,
-  })
-  messages.value.push(aiMessage)
-  isStreaming.value = true
+  const aiMessage = pushAiPlaceholder()
   scrollToBottom()
+  const url = `${API_BASE_URL}/app/chat/gen/code?appId=${appId}&message=${encodeURIComponent(content)}`
+  streamGeneration(url, aiMessage, generationStartedAt)
+}
+
+// 重新进入页面时，如果上次的生成还在后台进行，就接上：先回放已生成的内容，再继续接收
+const resumeGeneration = async () => {
+  try {
+    const res = await getGenStatus({ appId: appId as unknown as number })
+    if (res.data.code !== 0 || !res.data.data) {
+      return false
+    }
+  } catch {
+    return false
+  }
+  generationError.value = ''
+  const aiMessage = pushAiPlaceholder()
+  scrollToBottom()
+  streamGeneration(`${API_BASE_URL}/app/chat/gen/resume?appId=${appId}`, aiMessage, undefined, () => {
+    // 查询状态后、接上之前生成刚好结束：去掉占位消息，以已保存的对话历史为准
+    messages.value = []
+    historyCursor = undefined
+    void loadChatHistory().then(() => {
+      scrollToBottom()
+      void showExistingPreview()
+    })
+  })
+  return true
+}
+
+/**
+ * 接收 SSE 推送的生成内容并流式展示
+ *
+ * @param url SSE 地址（新对话或接上正在进行的生成）
+ * @param aiMessage 承接内容的 AI 消息
+ * @param generationStartedAt 本轮生成开始时间，VUE 工程据此判断构建产物是否为本轮生成；接上已有生成时不传
+ * @param onEmptyDone 流结束时没有收到任何内容的回调（只在接上已有生成时使用）
+ */
+const streamGeneration = (
+  url: string,
+  aiMessage: ChatMessage,
+  generationStartedAt?: number,
+  onEmptyDone?: () => void,
+) => {
+  isStreaming.value = true
 
   // SSE 片段到达速度极快（每秒可达上百条），若每条都触发 Markdown 重渲染会阻塞主线程
   // 导致页面卡死。这里先把片段累积到普通变量，每 150ms 批量刷入响应式消息
@@ -333,7 +387,6 @@ const sendMessage = (content: string) => {
     isStreaming.value = false
   }
 
-  const url = `${API_BASE_URL}/app/chat/gen/code?appId=${appId}&message=${encodeURIComponent(content)}`
   eventSource = new EventSource(url, { withCredentials: true })
   eventSource.onmessage = (event) => {
     if (!event.data) {
@@ -350,8 +403,12 @@ const sendMessage = (content: string) => {
   // 后端发送 done 事件表示网站文件全部生成完成
   eventSource.addEventListener('done', () => {
     finishStream()
+    if (onEmptyDone && !aiMessage.content) {
+      onEmptyDone()
+      return
+    }
     if (appInfo.value?.codeGenType === VUE_PROJECT_CODE_GEN_TYPE) {
-      void waitForVuePreview(generationStartedAt)
+      void waitForVuePreview(generationStartedAt ?? 0)
     } else {
       updatePreview()
       message.success('网站生成完成')
