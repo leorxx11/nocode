@@ -87,7 +87,7 @@ const doLogout = async () => {
   <header class="global-header">
     <RouterLink to="/" class="header-left">
       <img class="logo" src="@/assets/logo.png" alt="" />
-      <span class="site-title">AI 应用生成</span>
+      <span class="site-title">NoCode</span>
     </RouterLink>
     <nav class="header-menu" aria-label="主导航">
       <a-menu

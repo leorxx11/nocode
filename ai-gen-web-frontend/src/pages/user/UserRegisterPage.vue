@@ -39,7 +39,7 @@ const handleSubmit = async (values: API.UserRegisterRequest) => {
 <template>
   <div id="userRegisterPage" class="auth-page">
     <aside class="auth-story">
-      <span class="auth-eyebrow">AI 应用生成</span>
+      <span class="auth-eyebrow">NoCode</span>
       <h2>一句话，<br />呈所想。</h2>
       <p>从灵感到网站，和 AI 一起把每一个细节打磨成形。</p>
       <div class="auth-steps"><span>01 描述</span><span>02 生成</span><span>03 发布</span></div>

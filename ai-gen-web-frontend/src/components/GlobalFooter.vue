@@ -1,6 +1,6 @@
 <template>
   <footer class="global-footer">
-    <span>AI 应用生成</span><span>让想法在对话中成形 · by Leo</span>
+    <span>NoCode</span><span>让想法在对话中成形 · by Leo</span>
   </footer>
 </template>
 <style scoped>
