@@ -38,7 +38,5 @@ tmp/
 # 线上配置（含密钥）
 application-prod.yaml
 
-# 监控密钥（Grafana 管理员密码等）
-monitoring/.env
 # Claude Code 会话创建的工作树
 .claude/worktrees/

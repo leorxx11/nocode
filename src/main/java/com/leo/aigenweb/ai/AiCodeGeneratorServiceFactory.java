@@ -6,10 +6,7 @@ import com.leo.aigenweb.ai.guardrail.PromptSafetyInputGuardrail;
 import com.leo.aigenweb.ai.tools.ToolManager;
 import com.leo.aigenweb.exception.BusinessException;
 import com.leo.aigenweb.exception.ErrorCode;
-import com.leo.aigenweb.mapper.AppMapper;
-import com.leo.aigenweb.model.entity.App;
 import com.leo.aigenweb.model.enums.CodeGenTypeEnum;
-import com.leo.aigenweb.monitor.MonitorContext;
 import com.leo.aigenweb.service.ChatHistoryService;
 import com.leo.aigenweb.utils.SpringContextUtil;
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
@@ -46,9 +43,6 @@ public class AiCodeGeneratorServiceFactory {
 
     @Resource
     private ToolManager toolManager;
-
-    @Resource
-    private AppMapper appMapper;
 
     /**
      * AI 服务实例缓存
@@ -109,15 +103,12 @@ public class AiCodeGeneratorServiceFactory {
                 .build();
         // 从数据库记载历史对话到记忆中
         chatHistoryService.loadChatHistoryToMemory(appId, chatMemory, 20);
-        // 模型实例归这个应用独占，创建时绑定监控维度（只有应用创建者能对话，用户即创建者）
-        App app = appMapper.selectOneById(appId);
-        MonitorContext monitorContext = app == null ? MonitorContext.UNKNOWN : MonitorContext.of(app.getUserId(), appId);
 
         return switch (codeGenTypeEnum) {
             case VUE_PROJECT -> {
                 // 多例模型：每个 AI 服务独占一个模型实例，避免并发请求互相阻塞
                 StreamingChatModel reasoningStreamingChatModel = SpringContextUtil
-                        .getBean("reasoningStreamingChatModelPrototype", StreamingChatModel.class, monitorContext);
+                        .getBean("reasoningStreamingChatModelPrototype", StreamingChatModel.class);
                 yield AiServices.builder(AiCodeGeneratorService.class)
                         .streamingChatModel(reasoningStreamingChatModel)
                         .chatMemoryProvider(memoryId -> chatMemory)
@@ -133,7 +124,7 @@ public class AiCodeGeneratorServiceFactory {
             }
             case HTML, MULTI_FILE -> {
                 StreamingChatModel streamingChatModel = SpringContextUtil
-                        .getBean("streamingChatModelPrototype", StreamingChatModel.class, monitorContext);
+                        .getBean("streamingChatModelPrototype", StreamingChatModel.class);
                 yield AiServices.builder(AiCodeGeneratorService.class)
                         .chatModel(chatModel)
                         .streamingChatModel(streamingChatModel)
