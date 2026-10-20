@@ -1,0 +1,10 @@
+# Grafana 启动时自动导入 dashboards 目录下的看板
+apiVersion: 1
+
+providers:
+  - name: nocode
+    folder: NoCode
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

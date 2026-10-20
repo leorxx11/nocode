@@ -59,6 +59,17 @@ server:
       cookie:
         max-age: 2592000
 
+# 可观测性：只暴露健康检查和 Prometheus 指标端点
+# 线上把管理端口单独设为只监听本机（见 application-prod.yaml），避免指标经反向代理暴露到公网
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
 # springdoc-openapi
 springdoc:
   group-configs:
